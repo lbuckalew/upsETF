@@ -33,7 +33,7 @@ Get your AlphaVantage API key [here](https://www.alphavantage.co/support/#api-ke
 6. Repeat from #3.
 
 ## Test data
-Test data with simple allocations are included in the data folder as if it were cached. The tickers for the fake ETFs are `123`, `124`, and `125`. This was changed from `ABX1`, `ABY`, and `ABZ` to make sure those tickers are not real.
+Test data with simple allocations are included in the data folder as if it were cached. The tickers for the fake ETFs are `123`, `124`, and `125`. This was changed from `ABX`, `ABY`, and `ABZ` to make sure those tickers are not real.
 
 ```json
 {
