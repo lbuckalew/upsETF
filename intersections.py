@@ -8,7 +8,7 @@ class HoldingsSumException(Exception):
         super().__init__(self.message)
 
     def __str__(self):
-        return f"{self.message})"
+        return f"{self.message}"
 
 def parse_etf_pre_series(etf_json: dict):
     """
