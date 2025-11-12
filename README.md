@@ -9,7 +9,10 @@ upsETF takes into account the weight any holding has in a given ETF. For example
 
 ## Attributions
 ### Thanks my dudes
-Thanks github @smotes for the inspiration to make such a tool!.
+Thanks to [@smotes](https://github.com/smotes) for the inspiration to make such a tool!.
+
+### UpsetPlot
+Thanks to [UpSetPlot](https://upsetplot.readthedocs.io/en/stable/) of the upsetplot python package for maintaining the ability to plot an upset chart.
 
 ### Thanks chatGPT
 GUI by chatgpt to make the interface call dummy functions. ETF weight overlap written by me.
