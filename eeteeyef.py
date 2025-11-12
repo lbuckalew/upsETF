@@ -23,6 +23,7 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.scrolledtext import ScrolledText
+import tkinter.font as tkfont
 
 import requests
 import pandas as pd
@@ -33,7 +34,25 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from upsetplot import UpSet, from_memberships
 
-import traceback
+# --- Dark mode palette + Matplotlib defaults ---
+DARK_BG       = "#121212"   # app/window background
+DARK_SURFACE  = "#1E1E1E"   # frames, panels, entry backgrounds
+DARK_BORDER   = "#2A2A2A"
+FG_PRIMARY    = "#564bd3"
+FG_MUTED      = "#372f88"
+ACCENT        = "#4C8BF5"
+
+plt.rcParams.update({
+    "figure.facecolor": DARK_BG,
+    "axes.facecolor": DARK_SURFACE,
+    "savefig.facecolor": DARK_BG,
+    "text.color": ACCENT,
+    "axes.labelcolor": FG_PRIMARY,
+    "axes.edgecolor": FG_PRIMARY,
+    "xtick.color": FG_PRIMARY,
+    "ytick.color": FG_PRIMARY,
+    "grid.color": FG_MUTED,
+})
 
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
@@ -146,7 +165,6 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
     removed_ticker = None
     while len(holding_map) > 0:
         if removed_ticker is not None:
-            print(f"removing ticker {removed_ticker}")
             holding_map.pop(removed_ticker, None)
             removed_ticker = None
 
@@ -163,31 +181,22 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
                 pre_series['intersections'].append(intersection_name)
                 pre_series['data'].append(0.0)
             intersection_index = pre_series['intersections'].index(intersection_name)
-            print(f"intersection name {intersection_name} @ {intersection_index}")
 
             # Find which owner has the minimum weight for this holding and add that weight to the
             # intersection data.
             owners.sort(key=lambda x: x['value'])
-            print(f"sorted {owners}")
             min_owner = owners[0]
             min_value = min_owner['value']
-            print(f"adding {min_value}")
             pre_series['data'][intersection_index] += min_value
-            print(f" -> {pre_series['data'][intersection_index]}")
-            
 
             # Subtract the minimum weight from all other owners for this holding.
             for owner in owners:
-                print(f"subtracting {min_value} from {ticker} {owner['etf']}")
                 owner['value'] -= min_value
-                print(f"-> {owner['value']}")
 
             # Pop the owner with the minimum weight, and add that weight to the intersection data.
             owners.pop(0)
-            print(f"{owners}")
 
     # Build a Series indexed by memberships with per-element values, then aggregate by sum
-    print(pre_series)
     s = from_memberships(pre_series['intersections'], data=pre_series['data'])
     # Ensure aggregation by exact membership signature
     s = s.groupby(level=s.index.names).sum()
@@ -198,45 +207,141 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("ETF Overlap (Alpha Vantage UpSet)")
-        self.geometry("1100x800")
+        try:
+            self.state("zoomed")          # Windows
+        except tk.TclError:
+            self.attributes("-zoomed", 1) # Linux (if supported)
 
-        # Top frame - inputs
-        top = ttk.Frame(self)
-        top.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
+        default_font = tkfont.nametofont("TkDefaultFont")
+        text_font    = tkfont.nametofont("TkTextFont")
+        fixed_font   = tkfont.nametofont("TkFixedFont")
 
-        ttk.Label(top, text="Alpha Vantage API Key:").grid(row=0, column=0, sticky="w")
+        for f in (default_font, text_font, fixed_font):
+            size = f.cget("size")
+            f.configure(size=int(size * 1.5))  # scale up by 2×
+
+
+        # Init dark styling first
+        self._init_dark_style()
+
+        # --- Top frame (surface) ---
+        top = ttk.Frame(self, style="Surface.TFrame", padding=(10, 10, 10, 10))
+        top.pack(side=tk.TOP, fill=tk.X)
+
+        # Subframe 1: API controls
+        api_row = ttk.Frame(top, style="Surface.TFrame")
+        api_row.grid(row=0, column=0, sticky="we")
+
+        ttk.Label(api_row, text="Alpha Vantage API Key:", style="TLabel").grid(row=0, column=0, sticky="w")
         self.api_key_var = tk.StringVar()
-        self.api_key_entry = ttk.Entry(top, textvariable=self.api_key_var, width=40)
-        self.api_key_entry.grid(row=0, column=1, sticky="w", padx=(5,15))
+        self.api_key_entry = ttk.Entry(api_row, textvariable=self.api_key_var)
+        self.api_key_entry.grid(row=0, column=1, sticky="we", padx=(5, 15))
 
         self.force_var = tk.BooleanVar(value=False)
-        self.force_chk = ttk.Checkbutton(top, text="Force refresh (ignore cache)", variable=self.force_var)
-        self.force_chk.grid(row=0, column=2, sticky="w", padx=(5,15))
+        self.force_chk = ttk.Checkbutton(api_row, text="Force refresh (ignore cache)", variable=self.force_var)
+        self.force_chk.grid(row=0, column=2, sticky="w")
 
-        ttk.Label(top, text="Tickers (up to 5):").grid(row=1, column=0, sticky="w", pady=(8,0))
+        api_row.grid_columnconfigure(1, weight=1)
+
+        # Subframe 2: Tickers row (even spacing)
+        tick_row = ttk.Frame(top, style="Surface.TFrame")
+        tick_row.grid(row=1, column=0, sticky="we", pady=(8, 0))
+
+        ttk.Label(tick_row, text="Tickers (up to 5):").grid(row=0, column=0, sticky="w")
+
         self.ticker_vars = [tk.StringVar() for _ in range(5)]
+        for c in range(1, 8):
+            tick_row.grid_columnconfigure(c, weight=1, uniform="tickers")
+
         for i in range(5):
-            e = ttk.Entry(top, textvariable=self.ticker_vars[i], width=10)
-            e.grid(row=1, column=1+i, sticky="w", padx=5, pady=(8,0))
+            e = ttk.Entry(tick_row, textvariable=self.ticker_vars[i])
+            e.grid(row=0, column=1 + i, sticky="we", padx=5)
 
-        self.go_btn = ttk.Button(top, text="Fetch & Plot", command=self.on_fetch_plot)
-        self.go_btn.grid(row=1, column=6, padx=(15,0), pady=(8,0))
+        self.go_btn = ttk.Button(tick_row, text="Fetch & Plot", command=self.on_fetch_plot)
+        self.go_btn.grid(row=0, column=6, sticky="we", padx=(15, 5))
 
-        self.clear_btn = ttk.Button(top, text="Clear", command=self.on_clear)
-        self.clear_btn.grid(row=1, column=7, padx=(5,0), pady=(8,0))
+        self.clear_btn = ttk.Button(tick_row, text="Clear", command=self.on_clear)
+        self.clear_btn.grid(row=0, column=7, sticky="we")
 
-        # Middle - Matplotlib canvas
-        self.fig = plt.Figure(figsize=(9,6), dpi=100)
+        # --- Middle: Matplotlib canvas (inherits dark via rcParams) ---
+        self.fig = plt.Figure(figsize=(9, 6), dpi=100)
         self.ax = self.fig.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Explicit facecolors in case rcParams are overridden elsewhere:
+        self.fig.patch.set_facecolor(DARK_BG)
+        self.ax.set_facecolor(DARK_SURFACE)
 
-        # Bottom - log
-        bottom = ttk.Frame(self)
-        bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=10, pady=(0,10))
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
+        canvas_widget = self.canvas.get_tk_widget()
+        canvas_widget.configure(background=DARK_BG, highlightthickness=0, bd=0)
+        canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.canvas.draw()
+
+        # --- Bottom: Log (surface frame) ---
+        bottom = ttk.Frame(self, style="Surface.TFrame", padding=(10, 10, 10, 10))
+        bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
+
         ttk.Label(bottom, text="Log:").pack(anchor="w")
         self.log_text = ScrolledText(bottom, height=8, state="disabled")
         self.log_text.pack(fill=tk.BOTH, expand=False)
+
+        # Style the tk.ScrolledText internals (not ttk)
+        self.log_text.configure(
+            bg=DARK_SURFACE,
+            fg=FG_PRIMARY,
+            insertbackground=FG_PRIMARY,     # caret color
+            highlightbackground=DARK_BORDER, # border when unfocused
+            highlightcolor=ACCENT            # border when focused
+        )
+
+    def _init_dark_style(self):
+        # Window background
+        self.configure(bg=DARK_BG)
+
+        style = ttk.Style(self)
+        # Use a theme that respects custom colors
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+
+        # Base colors for common widgets
+        style.configure(".", background=DARK_BG, foreground=FG_PRIMARY)
+
+        # Frames/containers
+        style.configure("TFrame", background=DARK_BG)
+        style.configure("Surface.TFrame", background=DARK_SURFACE)
+
+        # Labels
+        style.configure("TLabel", background=DARK_BG, foreground=FG_PRIMARY)
+
+        # Entry fields
+        # Note: 'fieldbackground' drives the inside of ttk.Entry on 'clam'
+        style.configure("TEntry",
+                        fieldbackground=DARK_SURFACE,
+                        background=DARK_SURFACE,
+                        foreground=FG_PRIMARY)
+        style.map("TEntry",
+                fieldbackground=[("active", DARK_SURFACE)],
+                foreground=[("disabled", FG_MUTED)])
+
+        # Buttons
+        style.configure("TButton",
+                        background=DARK_SURFACE,
+                        foreground=FG_PRIMARY,
+                        bordercolor=DARK_BORDER,
+                        focusthickness=1,
+                        focuscolor=ACCENT)
+        style.map("TButton",
+                background=[("active", "#2A2F3A"), ("pressed", "#263044")],
+                foreground=[("disabled", FG_MUTED)])
+
+        # Checkbuttons
+        style.configure("TCheckbutton",
+                        background=DARK_BG,
+                        foreground=FG_PRIMARY)
+        style.map("TCheckbutton",
+                foreground=[("disabled", FG_MUTED)])
+
 
     def on_clear(self):
         for v in self.ticker_vars:
@@ -310,7 +415,7 @@ class App(tk.Tk):
             self.ax.clear()
             # Create a new UpSet on a fresh figure to avoid subplot layout issues, then draw it onto canvas
             fig = plt.Figure(figsize=(9,6), dpi=100)
-            upset = UpSet(s, show_counts=True, sort_by='-degree')  # counts are the number of unique holdings in each intersection
+            upset = UpSet(s, show_counts=True, sort_by='-degree', facecolor=FG_PRIMARY)
             upset.plot(fig=fig)
 
             # Replace figure in canvas
@@ -320,6 +425,9 @@ class App(tk.Tk):
                 self.fig = fig
                 self.canvas = FigureCanvasTkAgg(self.fig, master=self)
                 self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
+                self.fig.patch.set_facecolor(DARK_BG)
+                for a in self.fig.axes:
+                    a.set_facecolor(DARK_SURFACE)
                 self.canvas.draw()
 
                 # Add a descriptive suptitle without specifying colors/styles
@@ -330,7 +438,6 @@ class App(tk.Tk):
             log_fn("[done] Plot ready.")
         except Exception as e:
             log_fn(f"[fatal] {e}")
-            traceback.print_exc()
         finally:
             self.after(0, lambda: self.go_btn.configure(state="normal"))
 
