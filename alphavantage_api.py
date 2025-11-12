@@ -34,7 +34,7 @@ def fetch_etf_profile(symbol: str, api_key: str, force_refresh: bool, log_fn) ->
     if not force_refresh:
         cached = load_cached(sym)
         if cached:
-            log_fn(f"[cache] Using cached {sym}")
+            log_fn(f"[cache] Using cached {sym} from {cached.get('fetched_at', 'unknown time')}")
             return cached
 
     params = {
@@ -48,7 +48,7 @@ def fetch_etf_profile(symbol: str, api_key: str, force_refresh: bool, log_fn) ->
     r.raise_for_status()
     data = r.json()
     data["ticker"] = sym
-    data["fetched_at"] = datetime.now().isoformat()
+    data["fetched_at"] = datetime.today().strftime("%Y-%m-%d %H:%M:%S")
     data.pop("sectors", None)
     for h in data["holdings"]:
         if h['symbol'] == "n/a":

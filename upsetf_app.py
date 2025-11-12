@@ -13,7 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from upsetplot import UpSet
 matplotlib.use("TkAgg")
 
-from intersections import HoldingsSumException, parse_etf_pre_series, compute_weighted_intersections
+from intersections import HoldingsSumException, parse_etf, compute_weighted_intersections
 from alphavantage_api import fetch_etf_profile
 
 DARK_BG       = "#121212"
@@ -58,7 +58,7 @@ class App(tk.Tk):
 
         for f in (default_font, text_font, fixed_font):
             size = f.cget("size")
-            f.configure(size=int(size * 1.5))  # scale up by 2×
+            f.configure(size=int(size * 1.5))
 
 
         # Init dark styling first
@@ -99,6 +99,7 @@ class App(tk.Tk):
 
         self.go_btn = ttk.Button(tick_row, text="Fetch & Plot", command=self.on_fetch_plot)
         self.go_btn.grid(row=0, column=6, sticky="we", padx=(15, 5))
+        self.bind("<Return>", lambda event: self.on_fetch_plot())
 
         self.clear_btn = ttk.Button(tick_row, text="Clear", command=self.on_clear)
         self.clear_btn.grid(row=0, column=7, sticky="we")
@@ -115,7 +116,7 @@ class App(tk.Tk):
         canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.canvas.draw()
 
-        # Bottom: Log (surface frame ---
+        # Bottom: Logging area
         bottom = ttk.Frame(self, style="Surface.TFrame", padding=(10, 10, 10, 10))
         bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
 
@@ -194,6 +195,8 @@ class App(tk.Tk):
         t.start()
 
     def on_fetch_plot(self):
+        def log_fn(m): self.after(0, log, self.log_text, m)
+
         api_key = self.api_key_var.get().strip()
         tickers = [v.get().upper().strip() for v in self.ticker_vars if v.get().strip()]
         tickers = [t for t in tickers if t]
@@ -204,13 +207,11 @@ class App(tk.Tk):
             messagebox.showwarning("Limit", "Please enter at most 5 tickers.")
             return
         if not api_key:
-            if not messagebox.askyesno("No API key", "No API key entered. Use 'demo' (very limited)?"):
-                return
+            log_fn("[warn] No API key provided, using demo key (limited).")
             api_key = "demo"
 
         self.go_btn.configure(state="disabled")
         self.ax.clear()
-        self.ax.set_title("")
         self.canvas.draw()
 
         self.async_run(self._fetch_and_plot_worker, api_key, tickers, self.force_var.get())
@@ -235,7 +236,7 @@ class App(tk.Tk):
                     continue
 
                 try:
-                    parse_etf_pre_series(data)
+                    parse_etf(data)
                 except HoldingsSumException as e:
                     log_fn(f"[warn] {e}")
                     pass
@@ -251,7 +252,7 @@ class App(tk.Tk):
             self.ax.clear()
             # Create a new UpSet on a fresh figure to avoid subplot layout issues, then draw it onto canvas
             fig = plt.Figure(figsize=(9,6), dpi=100)
-            upset = UpSet(s, show_counts=True, sort_by='-degree', facecolor=FG_PRIMARY)
+            upset = UpSet(s, show_counts="{:.2f}%", sort_by='-degree', facecolor=FG_PRIMARY)
             upset.plot(fig=fig)
 
             # Replace figure in canvas
@@ -264,10 +265,6 @@ class App(tk.Tk):
                 self.fig.patch.set_facecolor(DARK_BG)
                 for a in self.fig.axes:
                     a.set_facecolor(DARK_SURFACE)
-                self.canvas.draw()
-
-                # Add a descriptive suptitle without specifying colors/styles
-                self.fig.suptitle("Weighted UpSet: sum of $ values for holdings in each exact intersection", y=1.02)
                 self.canvas.draw()
 
             self.after(0, update_canvas)

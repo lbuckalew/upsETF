@@ -10,7 +10,7 @@ class HoldingsSumException(Exception):
     def __str__(self):
         return f"{self.message}"
 
-def parse_etf_pre_series(etf_json: dict):
+def parse_etf(etf_json: dict):
     """
     Returns (net_assets, holding_values) where holding_values maps holding symbol -> dollar value in this ETF.
     value = net_assets * weight
