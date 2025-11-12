@@ -1,2 +1,5 @@
 .env/*
 data/*
+!data/ABX.json
+!data/ABY.json
+!data/ABZ.json

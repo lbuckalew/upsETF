@@ -1,42 +1,23 @@
 #!/usr/bin/env python3
-"""
-ETF Overlap GUI (Alpha Vantage + UpSet)
----------------------------------------
-- Enter up to 5 ETF tickers and an Alpha Vantage API key.
-- Fetches holdings via ETF_PROFILE (cached in ./data/<TICKER>.json to respect 25 calls/day).
-- Computes all intersections and plots an UpSet chart where bar heights equal the
-  SUM of per-ETF $ values of holdings in that exact intersection.
-    value_per_holding_in_etf = float(net_assets) * float(weight)
-- Each holding belongs to exactly one intersection (its exact membership signature).
-- Bars therefore represent the total dollars represented by those holdings across
-  the ETFs participating in that intersection (sum across those ETFs).
-Dependencies:
-  pip install requests pandas numpy matplotlib upsetplot
-"""
-import os
-import json
 import threading
-from pathlib import Path
-from typing import Dict, List, Tuple, Set
-from datetime import datetime
+from typing import Dict, List
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter.scrolledtext import ScrolledText
 import tkinter.font as tkfont
 
-import requests
-import pandas as pd
-import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from upsetplot import UpSet, from_memberships
+from upsetplot import UpSet
+matplotlib.use("TkAgg")
 
-# --- Dark mode palette + Matplotlib defaults ---
-DARK_BG       = "#121212"   # app/window background
-DARK_SURFACE  = "#1E1E1E"   # frames, panels, entry backgrounds
+from intersections import HoldingsSumException, parse_etf_pre_series, compute_weighted_intersections
+from alphavantage_api import fetch_etf_profile
+
+DARK_BG       = "#121212"
+DARK_SURFACE  = "#1E1E1E"
 DARK_BORDER   = "#2A2A2A"
 FG_PRIMARY    = "#564bd3"
 FG_MUTED      = "#372f88"
@@ -54,154 +35,13 @@ plt.rcParams.update({
     "grid.color": FG_MUTED,
 })
 
-DATA_DIR = Path("./data")
-DATA_DIR.mkdir(exist_ok=True)
-
-AV_BASE = "https://www.alphavantage.co/query"
-TIMEOUT = 30
-
 tkrs = []
-
-class HoldingsSumException(Exception):
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
-
-    def __str__(self):
-        return f"{self.message})"
 
 def log(text_widget: ScrolledText, msg: str) -> None:
     text_widget.configure(state="normal")
     text_widget.insert(tk.END, msg + "\n")
     text_widget.see(tk.END)
     text_widget.configure(state="disabled")
-
-def cache_path_for(symbol: str) -> Path:
-    return DATA_DIR / f"{symbol.upper()}.json"
-
-def load_cached(symbol: str) -> dict | None:
-    p = cache_path_for(symbol)
-    if p.exists():
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
-    return None
-
-def save_cache(symbol: str, payload: dict) -> None:
-    p = cache_path_for(symbol)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-
-def fetch_etf_profile(symbol: str, api_key: str, force_refresh: bool, log_fn) -> dict:
-    sym = symbol.upper().strip()
-    if not sym:
-        raise ValueError("Empty ticker")
-    if not force_refresh:
-        cached = load_cached(sym)
-        if cached:
-            log_fn(f"[cache] Using cached {sym}")
-            return cached
-
-    params = {
-        "function": "ETF_PROFILE",
-        "symbol": sym,
-        "apikey": api_key.strip()
-    }
-    url = AV_BASE
-    log_fn(f"[net] GET {url} ... ({sym})")
-    r = requests.get(url, params=params, timeout=TIMEOUT)
-    r.raise_for_status()
-    data = r.json()
-    data["ticker"] = sym
-    data["fetched_at"] = datetime.now().isoformat()
-    data.pop("sectors", None)
-    for h in data["holdings"]:
-        if h['symbol'] == "n/a":
-            h['symbol'] = h['description'].upper().replace(" ", "_")
-    # Basic sanity checks
-    if not isinstance(data, dict) or "holdings" not in data:
-        # Alpha Vantage returns "Note" when rate-limited; or "Information" for guidance.
-        note = data.get("Note") or data.get("Information") or str(data)[:200]
-        raise RuntimeError(f"Unexpected response for {sym}: {note}")
-    save_cache(sym, data)
-    return data
-
-def parse_etf_pre_series(etf_json: dict):
-    """
-    Returns (net_assets, holding_values) where holding_values maps holding symbol -> dollar value in this ETF.
-    value = net_assets * weight
-    """
-    try:
-        net_assets = float(etf_json.get("net_assets", "0"))
-    except Exception:
-        net_assets = 0.0
-
-    etf_json['net_assets'] = net_assets
-    weights_sum = 0
-    for h in etf_json.get("holdings", []):
-        w = float(h.get('weight', '0').replace('%', '')) * 100
-        h['weight'] = w
-        weights_sum += w
-
-    if weights_sum < 99:
-        raise HoldingsSumException(f"ETF {etf_json['ticker']} holdings only sum to {int(weights_sum)}%")
-
-def compute_weighted_intersections(etfs: List, pre_series: Dict):
-    # Orgnaize holdings by which ETFs hold them
-    holding_map = {}
-    for etf in etfs:
-        etf_t = etf.get("ticker", "UNKNOWN")
-        for h in etf.get("holdings", []):
-            holding_t = h.get("symbol", "UNKNOWN")
-            if holding_map.get(holding_t) is None:
-                holding_map[holding_t] = [{'etf': etf_t, 'value': h['weight']}]
-            else:
-                holding_map[holding_t].append({'etf': etf_t, 'value': h['weight']})
-
-    print(json.dumps(holding_map, indent=4))
-
-    removed_ticker = None
-    while len(holding_map) > 0:
-        if removed_ticker is not None:
-            holding_map.pop(removed_ticker, None)
-            removed_ticker = None
-
-        for ticker, owners in holding_map.items():
-            if len(owners) == 0:
-                removed_ticker = ticker
-                continue
-
-            # Handle the interesction names and data population
-            intersection_name = []
-            for owner in owners:
-                intersection_name.append(owner['etf'])
-            if intersection_name not in pre_series['intersections']:
-                pre_series['intersections'].append(intersection_name)
-                pre_series['data'].append(0.0)
-            intersection_index = pre_series['intersections'].index(intersection_name)
-
-            # Find which owner has the minimum weight for this holding and add that weight to the
-            # intersection data.
-            owners.sort(key=lambda x: x['value'])
-            min_owner = owners[0]
-            min_value = min_owner['value']
-            pre_series['data'][intersection_index] += min_value
-
-            # Subtract the minimum weight from all other owners for this holding.
-            for owner in owners:
-                owner['value'] -= min_value
-
-            # Pop the owner with the minimum weight, and add that weight to the intersection data.
-            owners.pop(0)
-
-    # Build a Series indexed by memberships with per-element values, then aggregate by sum
-    s = from_memberships(pre_series['intersections'], data=pre_series['data'])
-    # Ensure aggregation by exact membership signature
-    s = s.groupby(level=s.index.names).sum()
-
-    return s
 
 class App(tk.Tk):
     def __init__(self):
@@ -224,7 +64,7 @@ class App(tk.Tk):
         # Init dark styling first
         self._init_dark_style()
 
-        # --- Top frame (surface) ---
+        # Top frame (surface)
         top = ttk.Frame(self, style="Surface.TFrame", padding=(10, 10, 10, 10))
         top.pack(side=tk.TOP, fill=tk.X)
 
@@ -263,10 +103,9 @@ class App(tk.Tk):
         self.clear_btn = ttk.Button(tick_row, text="Clear", command=self.on_clear)
         self.clear_btn.grid(row=0, column=7, sticky="we")
 
-        # --- Middle: Matplotlib canvas (inherits dark via rcParams) ---
+        # Middle: Matplotlib canvas (inherits dark via rcParams)
         self.fig = plt.Figure(figsize=(9, 6), dpi=100)
         self.ax = self.fig.add_subplot(111)
-        # Explicit facecolors in case rcParams are overridden elsewhere:
         self.fig.patch.set_facecolor(DARK_BG)
         self.ax.set_facecolor(DARK_SURFACE)
 
@@ -276,7 +115,7 @@ class App(tk.Tk):
         canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.canvas.draw()
 
-        # --- Bottom: Log (surface frame) ---
+        # Bottom: Log (surface frame ---
         bottom = ttk.Frame(self, style="Surface.TFrame", padding=(10, 10, 10, 10))
         bottom.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=10, pady=(0, 10))
 
@@ -284,7 +123,6 @@ class App(tk.Tk):
         self.log_text = ScrolledText(bottom, height=8, state="disabled")
         self.log_text.pack(fill=tk.BOTH, expand=False)
 
-        # Style the tk.ScrolledText internals (not ttk)
         self.log_text.configure(
             bg=DARK_SURFACE,
             fg=FG_PRIMARY,
@@ -294,11 +132,9 @@ class App(tk.Tk):
         )
 
     def _init_dark_style(self):
-        # Window background
         self.configure(bg=DARK_BG)
 
         style = ttk.Style(self)
-        # Use a theme that respects custom colors
         try:
             style.theme_use("clam")
         except Exception:
