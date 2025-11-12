@@ -7,7 +7,11 @@ upsETF takes into account the weight any holding has in a given ETF. For example
 * The intersection between ETF2 and ETF3 is the minimum of the remaining weight (14% - 7% from three-way)
 * The intersection of ETF3 alone has the remaining weight (20% - 7% - 7% = 6%).
 
-## Thanks chatGPT
+## Attributions
+### Thanks my dudes
+Thanks github @smotes for the inspiration to make such a tool!.
+
+### Thanks chatGPT
 GUI by chatgpt to make the interface call dummy functions. ETF weight overlap written by me.
 
 ## Alpha Vantage API
