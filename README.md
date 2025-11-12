@@ -13,6 +13,25 @@ GUI by chatgpt to make the interface call dummy functions. ETF weight overlap wr
 ## Alpha Vantage API
 Get your AlphaVantage API key [here](https://www.alphavantage.co/support/#api-key). You are limited to 25 calls per day (each unique ETF you want to compare is one call). To help with this, upsETF caches each ETF API call.
 
+## Installation
+1. Install Python
+2. Execute `python -m venv .env`
+
+## Usage
+### Windows
+1. Execute `\.env\Scripts\activate.ps1`
+
+### Linux 
+1. Execute `source venv/bin/activate`
+
+### All
+2. Execute `python upsetf_app.py`
+3. (optional) Enter your AlphaVantage API key if you know you will be querying for a non-cached ETF.
+4. (optional) Check the "Force refresh" box to get new data even if it's cached.
+4. Input up to 5 ETF tickers
+5. Click "Fetch & Plot"
+6. Repeat from #3.
+
 ## Test data
 Test data with simple allocations are included in the data folder as if it were cached. The tickers for the fake ETFs are `ABX`, `ABY`, and `ABZ`.
 
