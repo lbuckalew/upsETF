@@ -43,6 +43,14 @@ TIMEOUT = 30
 
 tkrs = []
 
+class HoldingsSumException(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(self.message)
+
+    def __str__(self):
+        return f"{self.message})"
+
 def log(text_widget: ScrolledText, msg: str) -> None:
     text_widget.configure(state="normal")
     text_widget.insert(tk.END, msg + "\n")
@@ -101,7 +109,7 @@ def fetch_etf_profile(symbol: str, api_key: str, force_refresh: bool, log_fn) ->
     save_cache(sym, data)
     return data
 
-def parse_etf_pre_series(etf_json: dict, pre_series: Dict) -> Tuple[float, Dict[str, float]]:
+def parse_etf_pre_series(etf_json: dict):
     """
     Returns (net_assets, holding_values) where holding_values maps holding symbol -> dollar value in this ETF.
     value = net_assets * weight
@@ -112,10 +120,14 @@ def parse_etf_pre_series(etf_json: dict, pre_series: Dict) -> Tuple[float, Dict[
         net_assets = 0.0
 
     etf_json['net_assets'] = net_assets
+    weights_sum = 0
     for h in etf_json.get("holdings", []):
-        h['weight'] = float(h.get('weight', '0').replace('%', ''))
+        w = float(h.get('weight', '0').replace('%', '')) * 100
+        h['weight'] = w
+        weights_sum += w
 
-    return pre_series
+    if weights_sum < 99:
+        raise HoldingsSumException(f"ETF {etf_json['ticker']} holdings only sum to {int(weights_sum)}%")
 
 def compute_weighted_intersections(etfs: List, pre_series: Dict):
     # Orgnaize holdings by which ETFs hold them
@@ -129,9 +141,12 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
             else:
                 holding_map[holding_t].append({'etf': etf_t, 'value': h['weight']})
 
+    print(json.dumps(holding_map, indent=4))
+
     removed_ticker = None
     while len(holding_map) > 0:
         if removed_ticker is not None:
+            print(f"removing ticker {removed_ticker}")
             holding_map.pop(removed_ticker, None)
             removed_ticker = None
 
@@ -148,19 +163,28 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
                 pre_series['intersections'].append(intersection_name)
                 pre_series['data'].append(0.0)
             intersection_index = pre_series['intersections'].index(intersection_name)
+            print(f"intersection name {intersection_name} @ {intersection_index}")
 
             # Find which owner has the minimum weight for this holding and add that weight to the
             # intersection data.
             owners.sort(key=lambda x: x['value'])
+            print(f"sorted {owners}")
             min_owner = owners[0]
-            pre_series['data'][intersection_index] += min_owner['value']
+            min_value = min_owner['value']
+            print(f"adding {min_value}")
+            pre_series['data'][intersection_index] += min_value
+            print(f" -> {pre_series['data'][intersection_index]}")
+            
 
             # Subtract the minimum weight from all other owners for this holding.
             for owner in owners:
-                owner['value'] -= min_owner['value']
+                print(f"subtracting {min_value} from {ticker} {owner['etf']}")
+                owner['value'] -= min_value
+                print(f"-> {owner['value']}")
 
             # Pop the owner with the minimum weight, and add that weight to the intersection data.
             owners.pop(0)
+            print(f"{owners}")
 
     # Build a Series indexed by memberships with per-element values, then aggregate by sum
     print(pre_series)
@@ -169,41 +193,6 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
     s = s.groupby(level=s.index.names).sum()
 
     return s
-
-
-
-
-
-
-
-    # n = len(etf_names)
-    # name_list = [nm for nm in etf_names]
-
-    # # Collect all unique holdings
-    # all_holdings: Set[str] = set()
-    # for d in per_etf_values:
-    #     all_holdings.update(d.keys())
-
-    # print(all_holdings)
-
-    # memberships: List[Set[str]] = []
-    # values: List[float] = []
-
-    # for hs in sorted(all_holdings):
-    #     present_idxs = [i for i, d in enumerate(per_etf_values) if hs in d]
-    #     if not present_idxs:
-    #         continue
-    #     member_names = {name_list[i] for i in present_idxs}
-    #     # sum of $ value across the participating ETFs
-    #     val = float(sum(per_etf_values[i][hs] for i in present_idxs))
-    #     memberships.append(member_names)
-    #     values.append(val)
-
-    # # Build a Series indexed by memberships with per-element values, then aggregate by sum
-    # s = from_memberships(memberships, data=values)
-    # # Ensure aggregation by exact membership signature
-    # s = s.groupby(level=s.index.names).sum()
-    # return s
 
 class App(tk.Tk):
     def __init__(self):
@@ -304,7 +293,12 @@ class App(tk.Tk):
                     log_fn(f"[warn] {sym}: no usable holdings/net_assets")
                     continue
 
-                parse_etf_pre_series(data, pre_series)
+                try:
+                    parse_etf_pre_series(data)
+                except HoldingsSumException as e:
+                    log_fn(f"[warn] {e}")
+                    pass
+
                 etfs.append(data)
 
             if len(etfs) <= 1:
@@ -316,7 +310,7 @@ class App(tk.Tk):
             self.ax.clear()
             # Create a new UpSet on a fresh figure to avoid subplot layout issues, then draw it onto canvas
             fig = plt.Figure(figsize=(9,6), dpi=100)
-            upset = UpSet(s, show_counts=True)  # counts are the number of unique holdings in each intersection
+            upset = UpSet(s, show_counts=True, sort_by='-degree')  # counts are the number of unique holdings in each intersection
             upset.plot(fig=fig)
 
             # Replace figure in canvas
