@@ -33,6 +33,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from upsetplot import UpSet, from_memberships
 
+import traceback
+
 DATA_DIR = Path("./data")
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -113,13 +115,10 @@ def parse_etf_pre_series(etf_json: dict, pre_series: Dict) -> Tuple[float, Dict[
     for h in etf_json.get("holdings", []):
         h['weight'] = float(h.get('weight', '0').replace('%', ''))
 
-    pre_series['intersections'].append([etf_json.get("ticker", "UNKNOWN")])
-    pre_series['data'].append(net_assets)
-
     return pre_series
 
 def compute_weighted_intersections(etfs: List, pre_series: Dict):
-    # Calculate the intersections
+    # Orgnaize holdings by which ETFs hold them
     holding_map = {}
     for etf in etfs:
         etf_t = etf.get("ticker", "UNKNOWN")
@@ -130,34 +129,41 @@ def compute_weighted_intersections(etfs: List, pre_series: Dict):
             else:
                 holding_map[holding_t].append({'etf': etf_t, 'value': h['weight']})
 
-    for ticker, owners in holding_map.items():
-        if (len(owners) <= 1):
-            continue
+    removed_ticker = None
+    while len(holding_map) > 0:
+        if removed_ticker is not None:
+            holding_map.pop(removed_ticker, None)
+            removed_ticker = None
 
-        elif (len(owners) == 2):
+        for ticker, owners in holding_map.items():
+            if len(owners) == 0:
+                removed_ticker = ticker
+                continue
+
+            # Handle the interesction names and data population
             intersection_name = []
             for owner in owners:
                 intersection_name.append(owner['etf'])
-
             if intersection_name not in pre_series['intersections']:
                 pre_series['intersections'].append(intersection_name)
                 pre_series['data'].append(0.0)
+            intersection_index = pre_series['intersections'].index(intersection_name)
 
-            data_index = pre_series['intersections'].index(intersection_name)
+            # Find which owner has the minimum weight for this holding and add that weight to the
+            # intersection data.
+            owners.sort(key=lambda x: x['value'])
+            min_owner = owners[0]
+            pre_series['data'][intersection_index] += min_owner['value']
 
-            values = []
+            # Subtract the minimum weight from all other owners for this holding.
             for owner in owners:
-                values.append(owner['value'])
-            shared_value = min(values)
-            pre_series['data'][data_index] += shared_value
+                owner['value'] -= min_owner['value']
 
-    # pre_series['intersections'].append(['VOO', 'QQQ'])
-    # pre_series['data'].append(150000.0)
-
-
-
+            # Pop the owner with the minimum weight, and add that weight to the intersection data.
+            owners.pop(0)
 
     # Build a Series indexed by memberships with per-element values, then aggregate by sum
+    print(pre_series)
     s = from_memberships(pre_series['intersections'], data=pre_series['data'])
     # Ensure aggregation by exact membership signature
     s = s.groupby(level=s.index.names).sum()
@@ -330,6 +336,7 @@ class App(tk.Tk):
             log_fn("[done] Plot ready.")
         except Exception as e:
             log_fn(f"[fatal] {e}")
+            traceback.print_exc()
         finally:
             self.after(0, lambda: self.go_btn.configure(state="normal"))
 
