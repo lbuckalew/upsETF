@@ -1,7 +1,11 @@
 # upsETF
 Visualizing weighted ETF overlap with an upset plot.
 
-upsETF takes into account the weight any holding has a given ETF. For example, if ETF1 has a 7% allocation in `META', ETF2 has a 14% allocation in `META`, and ETF3 has a 20% allocation in `META` then they only overlap by the minimum of the two values (7%). The overlap is calculated using the distinct mode such that the shared 7% between all three is shown in the three-way intersection set, the overlap between ETF2 and ETF3 shows the remaining 7% overlap, and the remaining 6% overlap is shown in the lone ETF3 intersection.
+upsETF takes into account the weight any holding has in a given ETF. For example, if ETF1 has a 7% allocation in `META`, ETF2 has a 14% allocation in `META`, and ETF3 has a 20% allocation in `META`:
+* The three-way intersetion is the minimum of the three values
+* The intersection between ETF1 and ETF2 only is 0% (already taken into account by the three-way intersection)
+* The intersection between ETF2 and ETF3 is the minimum of the remaining weight (14% - 7% from three-way)
+* The intersection of ETF3 alone has the remaining weight (20% - 7% - 7% = 6%).
 
 ## Thanks chatGPT
 GUI by chatgpt to make the interface call dummy functions. ETF weight overlap written by me.
@@ -42,4 +46,7 @@ Test data with simple allocations are included in the data folder as if it were 
 }
 ```
 
-<img src="img/example.png" alt="Example" width="800"/>
+<img src="img/example2.png" alt="Example" width="800"/>
+
+## QQQ vs. SPY vs. VOO
+<img src="img/example1.png" alt="Example" width="800"/>
