@@ -1,0 +1,113 @@
+<div
+  class="app-root"
+  [ngClass]="{ 'dark-theme': isDark, 'light-theme': !isDark }"
+>
+  <!-- Backdrop for modal -->
+  <div
+    class="modal-backdrop"
+    *ngIf="showApiModal"
+    (click)="closeApiKeyModal()"
+  ></div>
+
+  <!-- API Key Modal -->
+  <div class="modal" *ngIf="showApiModal">
+    <h2 class="modal-title">Add API Key</h2>
+    <div class="modal-row">
+      <input
+        type="text"
+        [(ngModel)]="apiKeyInput"
+        placeholder="Enter API key"
+      />
+      <button class="btn primary" (click)="saveApiKey()">OK</button>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-title">ETF Overlap Viewer</div>
+    <div class="header-actions">
+        <button class="btn ghost" (click)="openApiKeyModal()">
+            Add API Key
+        </button>
+
+        <button class="btn primary" (click)="onPlotOverlap()">
+            Plot Overlap
+        </button>
+
+        <button class="btn icon-btn" (click)="toggleTheme()">💡</button>
+        </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="content">
+    <!-- Top row: ETFs + Log side by side -->
+    <div class="top-row">
+        <!-- ETF Section -->
+        <section class="card etf-card" #etfCard>
+            <div class="section-header">
+            <h3>ETFs</h3>
+            <span class="section-subtitle">Add up to 5 tickers</span>
+            </div>
+
+            <div class="etf-input-list">
+            <div
+                class="etf-input-row"
+                *ngFor="let etf of etfs; let i = index"
+            >
+                <input
+                type="text"
+                [(ngModel)]="etfs[i]"
+                placeholder="e.g. QQQ"
+                (focus)="onEtfFocus(i)"
+                [ngClass]="{
+                    'etf-input-selected': selectedEtfIndex === i
+                }"
+                />
+            </div>
+
+            <button
+                class="btn outline add-etf-btn"
+                *ngIf="etfs.length < 5"
+                (click)="addEtfField()"
+            >
+                + Add ETF
+            </button>
+            </div>
+        </section>
+
+        <!-- Log Window -->
+        <section
+            class="card log-card"
+            #logCard
+            [style.height.px]="logCardHeight"
+        >
+            <div class="section-header">
+            <h3>Log</h3>
+            </div>
+            <div class="log-window">
+            <div class="log-line" *ngFor="let line of logs">
+                {{ line }}
+            </div>
+            </div>
+        </section>
+        </div>
+
+    <!-- Plot Area below -->
+    <section class="card plot-card">
+        <div class="section-header">
+        <h3>Overlap Plot</h3>
+        <span class="section-subtitle">Powered by UpSet.js</span>
+        </div>
+
+        <div
+        #plotContainer
+        id="overlap-plot"
+        class="plot-placeholder"
+        >
+        <span class="plot-placeholder-text" *ngIf="!hasPlot">
+            Overlap plot will appear here once you click "Plot Overlap".
+        </span>
+        </div>
+    </section>
+    </main>
+</div>
