@@ -2,5 +2,9 @@
   "/api-key": {
     "target": "http://localhost:3000",
     "secure": false
+  },
+  "/etf": {
+    "target": "http://localhost:3000",
+    "secure": false
   }
 }

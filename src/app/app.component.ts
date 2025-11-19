@@ -1,15 +1,8 @@
-import {
-  Component,
-  ElementRef,
-  ViewChild,
-  AfterViewInit,
-} from '@angular/core';
+import {Component, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as UpSetJS from '@upsetjs/bundle';
-import { AlphavantageService } from '../alphavantage/alphavantage.service';
-
-
+import { AlphavantageService, EtfResponse } from '../alphavantage/alphavantage.service';
 
 @Component({
   selector: 'app-root',
@@ -18,57 +11,23 @@ import { AlphavantageService } from '../alphavantage/alphavantage.service';
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
 })
-export class AppComponent implements AfterViewInit {
-  @ViewChild('plotContainer', { static: true })
-  plotContainer!: ElementRef<HTMLDivElement>;
-
+export class AppComponent {
   isDark = true;
   hasPlot = false;
-
-  etfs: string[] = [''];
-  selectedEtfIndex: number | null = 0;
+  showApiModal = false;
 
   @ViewChild('etfCard') etfCard!: ElementRef<HTMLElement>;
   @ViewChild('logCard') logCard!: ElementRef<HTMLElement>;
-
-  logCardHeight: number | null = null;
-
-  private etfResizeObserver?: ResizeObserver;
+  @ViewChild('plotContainer', { static: true })
+  plotContainer!: ElementRef<HTMLDivElement>;
 
   logs: string[] = [];
-
-  showApiModal = false;
+  etf_inputs: string[] = [];
+  etf_data: EtfResponse[] = [];
+  selectedEtfIndex: number | null = 0;
   apiKeyInput = '';
 
   constructor(private AlphavantageService: AlphavantageService) {}
-
-  ngAfterViewInit(): void {
-    this.setupEtfResizeObserver();
-    this.syncLogCardHeight();
-    }
-
-    private setupEtfResizeObserver(): void {
-    if (typeof ResizeObserver !== 'undefined' && this.etfCard) {
-        this.etfResizeObserver = new ResizeObserver(() => {
-        this.syncLogCardHeight();
-        });
-        this.etfResizeObserver.observe(this.etfCard.nativeElement);
-    } else {
-        // Fallback: just sync once
-        setTimeout(() => this.syncLogCardHeight());
-    }
-    }
-
-    private syncLogCardHeight(): void {
-    if (!this.etfCard || !this.logCard) {
-        return;
-    }
-
-    const etfHeight = this.etfCard.nativeElement.offsetHeight;
-    if (etfHeight && etfHeight > 0) {
-        this.logCardHeight = etfHeight;
-    }
-    }
 
   // ---- Header actions ----
   openApiKeyModal(): void {
@@ -100,9 +59,55 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  onPlotOverlap(): void {
-    this.log('Plot Overlap clicked – rendering dummy 3-way intersection.');
+  fetchEtfHoldings(ticker: string): void {
+    const trimmed = ticker.trim();
+    if (!trimmed) {
+      this.log('Skipping empty ETF ticker.');
+      return;
+    }
 
+    this.log(`Requesting holdings for ${trimmed}...`);
+
+    this.AlphavantageService.getEtfHoldings(trimmed).subscribe({
+      next: (resp: EtfResponse) => {
+        const { source, usedDemoKey, payload } = resp;
+        this.log(`[${source}] ${payload.ticker} last fetched on ${payload.last_fetched}`);
+
+        if (usedDemoKey) {
+          this.log(
+            `No API key saved; using Alpha Vantage 'demo' key for ${payload.ticker}.`
+          );
+        }
+
+        this.etf_data.push(resp);
+
+        // TODO: later you can use payload.holdings to build the real UpSet plot
+      },
+      error: (err) => {
+        console.error(err);
+        this.log(`Error fetching holdings for ${trimmed}.`);
+      },
+    });
+  }
+
+  onPlotOverlap(): void {
+    this.log(`ETF inputs: ${this.etf_inputs.toString()}`);
+
+    if (this.etf_inputs.length < 2){
+      this.log("[ERR] Must input at least 2 ETFs to compare.");
+      return;
+    }
+
+    const sorted_tickers: string[] = this.etf_inputs;
+    sorted_tickers.sort();
+    this.log(sorted_tickers.toString());
+
+    for (const ticker of this.etf_inputs){
+      this.fetchEtfHoldings(ticker);
+    }
+  }
+
+  plotOverlap(): void {
     const container = this.plotContainer?.nativeElement;
     if (!container) {
       this.log('Plot container not available.');
@@ -147,23 +152,9 @@ export class AppComponent implements AfterViewInit {
     }
   }
 
-  // ---- ETF inputs ----
-  addEtfField(): void {
-    if (this.etfs.length < 5) {
-      this.etfs.push('');
-      this.selectedEtfIndex = this.etfs.length - 1;
-      setTimeout(() => this.syncLogCardHeight());
-    }
-  }
-
-  onEtfFocus(index: number): void {
-    this.selectedEtfIndex = index;
-  }
-
   // ---- Logging ----
   log(msg: string): void {
     const ts = new Date().toLocaleTimeString();
     this.logs.unshift(`[${ts}] ${msg}`);
-    setTimeout(() => this.syncLogCardHeight());
   }
 }

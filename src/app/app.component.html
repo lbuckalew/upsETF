@@ -50,37 +50,20 @@
             </div>
 
             <div class="etf-input-list">
-            <div
-                class="etf-input-row"
-                *ngFor="let etf of etfs; let i = index"
-            >
-                <input
-                type="text"
-                [(ngModel)]="etfs[i]"
-                placeholder="e.g. QQQ"
-                (focus)="onEtfFocus(i)"
-                [ngClass]="{
-                    'etf-input-selected': selectedEtfIndex === i
-                }"
-                />
-            </div>
-
-            <button
-                class="btn outline add-etf-btn"
-                *ngIf="etfs.length < 5"
-                (click)="addEtfField()"
-            >
-                + Add ETF
-            </button>
+            @for (index of [0,1,2,3,4]; track index;){
+                <div class="etf-input-row">
+                    <input
+                    type="text"
+                    [(ngModel)]="etf_inputs[index]"
+                    placeholder="e.g. QQQ"
+                    />
+                </div>
+            }
             </div>
         </section>
 
         <!-- Log Window -->
-        <section
-            class="card log-card"
-            #logCard
-            [style.height.px]="logCardHeight"
-        >
+        <section class="card log-card" #logCard>
             <div class="section-header">
             <h3>Log</h3>
             </div>

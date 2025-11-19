@@ -1,9 +1,3 @@
-__pycache__/*
-.env/*
-data/*
-!data/ABX.json
-!data/ABY.json
-!data/ABZ.json
 .angular
 .bin
 node_modules
