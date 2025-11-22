@@ -2,7 +2,9 @@ import {Component, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as UpSetJS from '@upsetjs/bundle';
-import { AlphavantageService, EtfResponse } from '../alphavantage/alphavantage.service';
+import { Etf } from './etf.interface';
+import { AlphavantageApi } from '../alphavantage-api/alphavantage.service';
+import {apiResponseInfo } from '../api-base/api-base.interface';
 
 @Component({
   selector: 'app-root',
@@ -23,11 +25,15 @@ export class AppComponent {
 
   logs: string[] = [];
   etf_inputs: string[] = [];
-  etf_data: EtfResponse[] = [];
+  etf_data: Etf[] = [];
   selectedEtfIndex: number | null = 0;
   apiKeyInput = '';
+  apiSource = 'Alphavantage';
+  private currentApi: AlphavantageApi;
 
-  constructor(private AlphavantageService: AlphavantageService) {}
+  constructor(private alphavantageApi: AlphavantageApi) {
+    this.currentApi = this.alphavantageApi;
+  }
 
   // ---- Header actions ----
   openApiKeyModal(): void {
@@ -40,23 +46,23 @@ export class AppComponent {
   }
 
   saveApiKey(): void {
-    const trimmed = this.apiKeyInput.trim();
-    if (!trimmed) {
-      this.log('API key is empty. Not saving.');
-      this.closeApiKeyModal();
-      return;
-    }
+    // const trimmed = this.apiKeyInput.trim();
+    // if (!trimmed) {
+    //   this.log('API key is empty. Not saving.');
+    //   this.closeApiKeyModal();
+    //   return;
+    // }
 
-    this.AlphavantageService.saveApiKey(trimmed).subscribe({
-      next: () => {
-        this.log('API key saved to api-key.json.');
-        this.closeApiKeyModal();
-      },
-      error: (err) => {
-        console.error(err);
-        this.log('Failed to save API key (see console for details).');
-      },
-    });
+    // this.AlphavantageService.saveApiKey(trimmed).subscribe({
+    //   next: () => {
+    //     this.log('API key saved to api-key.json.');
+    //     this.closeApiKeyModal();
+    //   },
+    //   error: (err) => {
+    //     console.error(err);
+    //     this.log('Failed to save API key (see console for details).');
+    //   },
+    // });
   }
 
   fetchEtfHoldings(ticker: string): void {
@@ -68,20 +74,22 @@ export class AppComponent {
 
     this.log(`Requesting holdings for ${trimmed}...`);
 
-    this.AlphavantageService.getEtfHoldings(trimmed).subscribe({
-      next: (resp: EtfResponse) => {
-        const { source, usedDemoKey, payload } = resp;
-        this.log(`[${source}] ${payload.ticker} last fetched on ${payload.last_fetched}`);
+    this.currentApi.getEtfInfo(trimmed).subscribe({
+      next: (resp: [apiResponseInfo, Etf]) => {
+        const info: apiResponseInfo = resp[0];
+        const etf: Etf = resp[1];
+        this.log(
+          `[${info.usedCache === true ? 'CACHE' : 'API'}]' +
+          '${etf.ticker} last fetched on ${etf.last_fetched}`
+        );
 
-        if (usedDemoKey) {
+        if (info.usedDemoKey) {
           this.log(
-            `No API key saved; using Alpha Vantage 'demo' key for ${payload.ticker}.`
+            `No API key saved; using Alpha Vantage 'demo' key for ${etf.ticker}.`
           );
         }
 
-        this.etf_data.push(resp);
-
-        // TODO: later you can use payload.holdings to build the real UpSet plot
+        this.etf_data.push(etf);
       },
       error: (err) => {
         console.error(err);
