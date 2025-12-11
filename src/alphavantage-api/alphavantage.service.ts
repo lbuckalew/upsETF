@@ -1,4 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Holding, Sector, Etf} from '../app/etf.interface'
@@ -15,12 +16,15 @@ interface AlphavantageEtfResponse {
   holdings: Holding[];
 }
 
+@Injectable({
+  providedIn: 'root',
+})
 export class AlphavantageApi extends GenericApi {
   info: genericApiInfo = {
     apiName: 'Alphavantage',
     baseUrl: 'https://www.alphavantage.co/',
     etfInfoEndpoint: 'query?function=ETF_PROFILE',
-    apiKey: 'demo'
+    apiKey: 'A0A1FOCSZASMFOY8'
   };
 
   constructor (private http: HttpClient) {
@@ -28,15 +32,21 @@ export class AlphavantageApi extends GenericApi {
   }
 
   responseToEtf(input: AlphavantageEtfResponse): Etf {
-    let etf : Etf;
-    etf.net_assets = Number(input.net_assets);
-    etf.net_expense_ratio = Number(input.net_expense_ratio);
-    etf.portfolio_turnover = Number(input.portfolio_turnover);
-    etf.dividend_yield = Number(input.dividend_yield);
-    etf.inception_date = input.inception_date;
-    etf.leveraged = input.leveraged;
-    etf.sectors = [];
-    etf.holdings = [];
+    console.log(input);
+    let etf: Etf = {
+      ticker: '',
+      last_fetched: '',
+      net_assets: Number(input.net_assets),
+      net_expense_ratio: Number(input.net_expense_ratio),
+      portfolio_turnover: Number(input.portfolio_turnover),
+      dividend_yield: Number(input.dividend_yield),
+      inception_date: input.inception_date,
+      leveraged: input.leveraged,
+      sectors: [],
+      holdings: []
+    };
+    console.log(typeof etf);
+    
 
     for (const s of input.sectors) {
       let cleanSector : Sector = {
@@ -60,11 +70,11 @@ export class AlphavantageApi extends GenericApi {
   getEtfInfo(ticker: string): Observable<[apiResponseInfo, Etf]> {
     ticker = ticker.toUpperCase();
 
-    const params: HttpParams = new HttpParams();
-    params.set('symbol', ticker);
-    params.set('apikey', this.info.apiKey);
-
-    return this.http.post<AlphavantageEtfResponse>(this.info.baseUrl, {params: params}).pipe(
+    return this.http.get<AlphavantageEtfResponse>(
+      this.info.baseUrl +
+      this.info.etfInfoEndpoint +
+      `&symbol=${ticker}&apikey=${this.info.apiKey}`
+    ).pipe(
       map(resp => {
         console.log('Updated response');
         let etf: Etf = this.responseToEtf(resp);

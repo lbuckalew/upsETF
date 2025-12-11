@@ -1,6 +1,7 @@
 import {Component, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Injectable } from '@angular/core';
 import * as UpSetJS from '@upsetjs/bundle';
 import { Etf } from './etf.interface';
 import { AlphavantageApi } from '../alphavantage-api/alphavantage.service';
